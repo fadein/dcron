@@ -31,6 +31,7 @@ char *ParseField(char *userName, char *ary, int modvalue, int off, int onvalue, 
 void FixDayDow(CronLine *line);
 
 void PrintLine(CronLine *line);
+void PrintFile(CronFile *file, char* loc, char* fname, int line);
 
 CronFile *FileBase = NULL;
 
@@ -233,6 +234,8 @@ SynchronizeDir(const char *dpath, const char *user_override, int initial_scan)
 			printlogf(LOG_ERR, "unable to scan directory %s\n", dpath);
 			/* softerror, do not exit the program */
 	}
+
+	PrintFile(FileBase, "SynchronizeDir()", __FILE__, __LINE__);
 }
 
 
@@ -972,6 +975,7 @@ TestJobs(time_t t1, time_t t2)
 	CronFile *file;
 	CronLine *line;
 
+	PrintFile(FileBase, "TestJobs()", __FILE__, __LINE__);
 	for (file = FileBase; file; file = file->cf_Next) {
 		if (file->cf_Deleted)
 			continue;
@@ -1285,48 +1289,60 @@ PrintLine(CronLine *line)
 	if (!line)
 		return;
 
-	printlogf(LOG_DEBUG, "\nCronLine:\n============\n");
-	printlogf(LOG_DEBUG, "Command: %s\n", line->cl_Shell);
-	printlogf(LOG_DEBUG, "Desc:    %s\n", line->cl_Description);
-	printlogf(LOG_DEBUG, "Freq:    %s\n", (line->cl_Freq ?
+	printlogf(LOG_DEBUG, "\nCronLine:\n------------\n");
+	printlogf(LOG_DEBUG, "  Command: %s\n", line->cl_Shell);
+	//printlogf(LOG_DEBUG, "  Desc:    %s\n", line->cl_Description);
+	printlogf(LOG_DEBUG, "  Freq:    %s\n", (line->cl_Freq ?
 				(line->cl_Freq == -1 ? "(noauto)" : "(startup") : "(use arrays)"));
-	printlogf(LOG_DEBUG, "PID:     %d\n", line->cl_Pid);
+	printlogf(LOG_DEBUG, "  PID:     %d\n", line->cl_Pid);
 
-	printlogf(LOG_DEBUG, "\nMins:    ");
+	printlogf(LOG_DEBUG, "  Mins:    ");
 	for (i = 0; i < 60; ++i)
 		printlogf(LOG_DEBUG, "%d", line->cl_Mins[i]);
 
-	printlogf(LOG_DEBUG, "\nHrs:     ");
+	printlogf(LOG_DEBUG, "\n  Hrs:     ");
 	for (i = 0; i < 24; ++i)
 		printlogf(LOG_DEBUG, "%d", line->cl_Hrs[i]);
 
-	printlogf(LOG_DEBUG, "\nDays:    ");
+	printlogf(LOG_DEBUG, "\n  Days:    ");
 	for (i = 0; i < 32; ++i)
 		printlogf(LOG_DEBUG, "%d", line->cl_Days[i]);
 
-	printlogf(LOG_DEBUG, "\nMons:    ");
+	printlogf(LOG_DEBUG, "\n  Mons:    ");
 	for (i = 0; i < 12; ++i)
 		printlogf(LOG_DEBUG, "%d", line->cl_Mons[i]);
 
-	printlogf(LOG_DEBUG, "\nDow:     ");
+	printlogf(LOG_DEBUG, "\n  Dow:     ");
 	for (i = 0; i < 7; ++i)
 		printlogf(LOG_DEBUG, "%2x ", line->cl_Dow[i]);
 	printlogf(LOG_DEBUG, "\n\n");
 }
 
 void
-PrintFile(CronFile *file)
+PrintFile(CronFile *file, char* loc, char* fname, int line)
 {
-	int i;
 	CronFile *f;
 	CronLine *l;
+
+	printlogf(LOG_DEBUG, "%s %s:%d\n", loc, fname, line);
 
 	if (!file)
 		return;
 
 	f = file;
 	while (f) {
-		l = f->cf_LineBase;
+
+		printlogf(LOG_DEBUG, "FILE %s/%s USER %s\n=============================\n",
+				file->cf_DPath,
+				file->cf_FileName,
+				file->cf_UserName);
+				l = f->cf_LineBase;
+
+		while (l) {
+			PrintLine(l);
+			l = l->cl_Next;
+		}
+
 		f = f->cf_Next;
 	}
 
