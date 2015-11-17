@@ -18,11 +18,19 @@ Prototype int ArmJob(CronFile *file, CronLine *line, time_t t1, time_t t2);
 Prototype void RunJobs(void);
 Prototype int CheckJobs(void);
 
+// TODO: write a function (or functions) which deconstruct the internal
+// database of cronjobs so that I can see what bits are set at each step
+// of the way. I'm not sure whether TestJobs is failing to recognize my
+// "Nth DoW" tasks, or if ArmJob is screwing something up - or if
+// the Synchronize function is entering them wrong. I know that when the
+// fields are being parsed, they're going in correct...
 void SynchronizeFile(const char *dpath, const char *fname, const char *uname);
 void DeleteFile(CronFile **pfile);
 char *ParseInterval(int *interval, char *ptr);
 char *ParseField(char *userName, char *ary, int modvalue, int off, int onvalue, const char **names, char *ptr);
 void FixDayDow(CronLine *line);
+
+void PrintLine(CronLine *line);
 
 CronFile *FileBase = NULL;
 
@@ -471,6 +479,7 @@ SynchronizeFile(const char *dpath, const char *fileName, const char *userName)
 					if (ptr == NULL)
 						continue;
 
+					//  I have a feeling the bug is actually in this call
 					/*
 					 * fix days and dow - if one is not * and the other
 					 * is *, the other is set to 0, and vise-versa
@@ -634,12 +643,12 @@ SynchronizeFile(const char *dpath, const char *fileName, const char *userName)
 
 				if (line.cl_JobName) {
 					if (DebugOpt)
-						printlogf(LOG_DEBUG, "    Command %s Job %s\n", line.cl_Shell, line.cl_JobName);
+						printlogf(LOG_DEBUG, "    Command %s Job %s\n\n", line.cl_Shell, line.cl_JobName);
 				} else {
 					/* when cl_JobName is NULL, we point cl_Description to cl_Shell */
 					line.cl_Description = line.cl_Shell;
 					if (DebugOpt)
-						printlogf(LOG_DEBUG, "    Command %s\n", line.cl_Shell);
+						printlogf(LOG_DEBUG, "    Command %s\n\n", line.cl_Shell);
 				}
 
 				*pline = calloc(1, sizeof(CronLine));
@@ -804,6 +813,23 @@ ParseField(char *user, char *ary, int modvalue, int off, int onvalue, const char
 	if (DebugOpt) {
 		int i;
 
+		switch (modvalue) {
+			case 60:
+				printlogf(LOG_DEBUG, "min:", modvalue);
+				break;
+			case 24:
+				printlogf(LOG_DEBUG, " hr:", modvalue);
+				break;
+			case 32:
+				printlogf(LOG_DEBUG, "day:", modvalue);
+				break;
+			case 12:
+				printlogf(LOG_DEBUG, "mon:", modvalue);
+				break;
+			case  7:
+				printlogf(LOG_DEBUG, "dow:", modvalue);
+				break;
+		}
 		for (i = 0; i < modvalue; ++i)
 			if (modvalue == 7)
 				printlogf(LOG_DEBUG, "%2x ", ary[i]);
@@ -833,12 +859,16 @@ FixDayDow(CronLine *line)
 			if (weekUsed) {
 				if (!daysUsed) {
 					daysUsed = 1;
+					// now, just how are the Dow values being used?
+					// they were either -1 or 0, right?
+					// and why mod5? and the bitshift?
 					/* change from "every Mon" to "ith Mon"
 					 * 6th,7th... Dow are treated as 1st,2nd... */
 					for (j = 0; j < arysize(line->cl_Dow); ++j) {
 						line->cl_Dow[j] &= 1 << (i-1)%5;
 					}
 				} else {
+					// what in the heck does this even mean? what is ith?
 					/* change from "nth Mon" to "nth or ith Mon" */
 					for (j = 0; j < arysize(line->cl_Dow); ++j) {
 						if (line->cl_Dow[j])
@@ -1023,6 +1053,7 @@ TestJobs(time_t t1, time_t t2)
  * else it will wait on any of its declared notifiers who will run <= t2 + cw_MaxWait
  */
 
+// Is ArmJob ever seeing my jobs? or does it see it and not Arm it?
 int
 ArmJob(CronFile *file, CronLine *line, time_t t1, time_t t2)
 {
@@ -1247,3 +1278,56 @@ CheckJobs(void)
 	return(nStillRunning);
 }
 
+void
+PrintLine(CronLine *line)
+{
+	int i;
+	if (!line)
+		return;
+
+	printlogf(LOG_DEBUG, "\nCronLine:\n============\n");
+	printlogf(LOG_DEBUG, "Command: %s\n", line->cl_Shell);
+	printlogf(LOG_DEBUG, "Desc:    %s\n", line->cl_Description);
+	printlogf(LOG_DEBUG, "Freq:    %s\n", (line->cl_Freq ?
+				(line->cl_Freq == -1 ? "(noauto)" : "(startup") : "(use arrays)"));
+	printlogf(LOG_DEBUG, "PID:     %d\n", line->cl_Pid);
+
+	printlogf(LOG_DEBUG, "\nMins:    ");
+	for (i = 0; i < 60; ++i)
+		printlogf(LOG_DEBUG, "%d", line->cl_Mins[i]);
+
+	printlogf(LOG_DEBUG, "\nHrs:     ");
+	for (i = 0; i < 24; ++i)
+		printlogf(LOG_DEBUG, "%d", line->cl_Hrs[i]);
+
+	printlogf(LOG_DEBUG, "\nDays:    ");
+	for (i = 0; i < 32; ++i)
+		printlogf(LOG_DEBUG, "%d", line->cl_Days[i]);
+
+	printlogf(LOG_DEBUG, "\nMons:    ");
+	for (i = 0; i < 12; ++i)
+		printlogf(LOG_DEBUG, "%d", line->cl_Mons[i]);
+
+	printlogf(LOG_DEBUG, "\nDow:     ");
+	for (i = 0; i < 7; ++i)
+		printlogf(LOG_DEBUG, "%2x ", line->cl_Dow[i]);
+	printlogf(LOG_DEBUG, "\n\n");
+}
+
+void
+PrintFile(CronFile *file)
+{
+	int i;
+	CronFile *f;
+	CronLine *l;
+
+	if (!file)
+		return;
+
+	f = file;
+	while (f) {
+		l = f->cf_LineBase;
+		f = f->cf_Next;
+	}
+
+}
