@@ -235,7 +235,7 @@ SynchronizeDir(const char *dpath, const char *user_override, int initial_scan)
 			/* softerror, do not exit the program */
 	}
 
-	PrintFile(FileBase, "SynchronizeDir()", __FILE__, __LINE__);
+	//PrintFile(FileBase, "SynchronizeDir()", __FILE__, __LINE__);
 }
 
 
@@ -482,13 +482,18 @@ SynchronizeFile(const char *dpath, const char *fileName, const char *userName)
 					if (ptr == NULL)
 						continue;
 
-					//  I have a feeling the bug is actually in this call
+					//  This call is zeroing out BOTH the cl_Days array
+					//  AND the cl_Dow array!
 					/*
 					 * fix days and dow - if one is not * and the other
 					 * is *, the other is set to 0, and vise-versa
 					 */
 
+					printlogf(LOG_DEBUG, "before FixDayDow()\n");
+					PrintLine(&line);
 					FixDayDow(&line);
+					printlogf(LOG_DEBUG, "after FixDayDow()\n");
+					PrintLine(&line);
 				}
 
 				/* check for ID=... and AFTER=... and FREQ=... */
@@ -813,7 +818,7 @@ ParseField(char *user, char *ary, int modvalue, int off, int onvalue, const char
 	while (*ptr == ' ' || *ptr == '\t' || *ptr == '\n')
 		++ptr;
 
-	if (DebugOpt) {
+	if (DebugOpt && strncmp(user, "root", 4)) {
 		int i;
 
 		switch (modvalue) {
@@ -1332,17 +1337,18 @@ PrintFile(CronFile *file, char* loc, char* fname, int line)
 	f = file;
 	while (f) {
 
-		printlogf(LOG_DEBUG, "FILE %s/%s USER %s\n=============================\n",
-				file->cf_DPath,
-				file->cf_FileName,
-				file->cf_UserName);
-				l = f->cf_LineBase;
+		if (strncmp(file->cf_UserName, "root", 4)) {
+			printlogf(LOG_DEBUG, "FILE %s/%s USER %s\n=============================\n",
+					file->cf_DPath,
+					file->cf_FileName,
+					file->cf_UserName);
+			l = f->cf_LineBase;
 
-		while (l) {
-			PrintLine(l);
-			l = l->cl_Next;
+			while (l) {
+				PrintLine(l);
+				l = l->cl_Next;
+			}
 		}
-
 		f = f->cf_Next;
 	}
 
