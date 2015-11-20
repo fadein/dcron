@@ -1027,10 +1027,22 @@ TestJobs(time_t t1, time_t t2)
 		if (t > t1) {
 			struct tm *tp = localtime(&t);
 
+			// tm_mday = The day of the month, in the range 1 to 31.
+			// tm_wday = The number of days since Sunday, in the range 0 to 6.
 			unsigned short n_wday = (tp->tm_mday - 1)%7 + 1;
+			// n_wday -> [1..7]
+			// [,] = included = closed = <=, >=
+			// (,) = excluded = open   = <, >
+			//
+			// I think this if statement is trying to figure out how many Dow there are in this month...
+			// as in, how many Tuesdays there are in this month. But I think this algo is bonkers...
 			if (n_wday >= 4) {
 				struct tm tnext = *tp;
 				tnext.tm_mday += 7;
+				// mktime() converts broken-down time (struct tm) into calendar time (time_t)
+				// mktime() ignores .tm_wday and .tm_yday members
+				// mktime() modifies its argument so as to be "normalized" (Oct 40 becomes Nov 9)
+				// mktime() returns -1 if the broken-down time cannot be expressed as calendar time
 				if (mktime(&tnext) != (time_t)-1 && tnext.tm_mon != tp->tm_mon)
 					n_wday |= 16;	/* last dow in month is always recognized as 5th */
 			}
