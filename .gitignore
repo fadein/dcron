@@ -1,2 +1,7 @@
 *.swp
 protos.h
+*.o
+tags
+crond
+crontab
+config
