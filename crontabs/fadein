@@ -1,8 +1,8 @@
 # MIN HOUR DAY MONTH DAYOFWEEK  COMMAND
 
-    *     *   2     nov       sat  /usr/bin/echo "2nd Saturday of November"
-    58    *   2     nov       sat  /usr/bin/echo "2nd Saturday of November 52 mins after"
-    58    *   14     nov       *  /usr/bin/echo "14th of November 52 mins after"
-    58    *   14     nov       *  /usr/bin/echo "14th of November 58 mins after"
+  *   *    3,5 nov   wed        /usr/bin/echo "3rd&Last Wednesday"
+  *   *    3,4 nov   wed        /usr/bin/echo "3rd&4th Wednesday"
+  *   *    3   nov   wed        /usr/bin/echo "3rd Wednesday"
+  *   *    1,5 *     mon-wed    date
 
 # vim: set tabstop=8:

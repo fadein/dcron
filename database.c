@@ -18,18 +18,11 @@ Prototype int ArmJob(CronFile *file, CronLine *line, time_t t1, time_t t2);
 Prototype void RunJobs(void);
 Prototype int CheckJobs(void);
 
-// TODO: write a function (or functions) which deconstruct the internal
-// database of cronjobs so that I can see what bits are set at each step
-// of the way. I'm not sure whether TestJobs is failing to recognize my
-// "Nth DoW" tasks, or if ArmJob is screwing something up - or if
-// the Synchronize function is entering them wrong. I know that when the
-// fields are being parsed, they're going in correct...
 void SynchronizeFile(const char *dpath, const char *fname, const char *uname);
 void DeleteFile(CronFile **pfile);
 char *ParseInterval(int *interval, char *ptr);
 char *ParseField(char *userName, char *ary, int modvalue, int off, int onvalue, const char **names, char *ptr);
 void FixDayDow(CronLine *line);
-
 void PrintLine(CronLine *line);
 void PrintFile(CronFile *file, char* loc, char* fname, int line);
 
@@ -489,10 +482,10 @@ SynchronizeFile(const char *dpath, const char *fileName, const char *userName)
 					 * is *, the other is set to 0, and vise-versa
 					 */
 
-					printlogf(LOG_DEBUG, "before FixDayDow()\n");
+					printlogf(LOG_DEBUG, "====================\nbefore FixDayDow()\n====================\n");
 					PrintLine(&line);
 					FixDayDow(&line);
-					printlogf(LOG_DEBUG, "after FixDayDow()\n");
+					printlogf(LOG_DEBUG, "====================\nafter FixDayDow()\n====================\n");
 					PrintLine(&line);
 				}
 
@@ -853,26 +846,27 @@ void
 FixDayDow(CronLine *line)
 {
 	unsigned short i,j;
-	short weekUsed = 0;
-	short daysUsed = 0;
+	short DowUsed = 0;
+	short DomUsed = 0;
 
 	for (i = 0; i < arysize(line->cl_Dow); ++i) {
 		if (line->cl_Dow[i] == 0) {
-			weekUsed = 1;
+			DowUsed = 1;
 			break;
 		}
 	}
 	for (i = 0; i < arysize(line->cl_Days); ++i) {
 		if (line->cl_Days[i] == 0) {
-			if (weekUsed) {
-				if (!daysUsed) {
-					daysUsed = 1;
+			if (DowUsed) {
+				if (!DomUsed) {
+					DomUsed = 1;
 					// now, just how are the Dow values being used?
 					// they were either -1 or 0, right?
 					// and why mod5? and the bitshift?
 					/* change from "every Mon" to "ith Mon"
 					 * 6th,7th... Dow are treated as 1st,2nd... */
 					for (j = 0; j < arysize(line->cl_Dow); ++j) {
+						// this statement is zeroing stuff out
 						line->cl_Dow[j] &= 1 << (i-1)%5;
 					}
 				} else {
@@ -886,15 +880,15 @@ FixDayDow(CronLine *line)
 				/* continue cycling through cl_Days */
 			}
 			else {
-				daysUsed = 1;
+				DomUsed = 1;
 				break;
 			}
 		}
 	}
-	if (weekUsed) {
+	if (DowUsed) {
 		memset(line->cl_Days, 0, sizeof(line->cl_Days));
 	}
-	if (daysUsed && !weekUsed) {
+	if (DomUsed && !DowUsed) {
 		memset(line->cl_Dow, 0, sizeof(line->cl_Dow));
 	}
 }
