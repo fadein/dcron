@@ -849,16 +849,21 @@ FixDayDow(CronLine *line)
 	short DowUsed = 0;
 	short DomUsed = 0;
 
+	// was a particular Dow specified, or was * given?
 	for (i = 0; i < arysize(line->cl_Dow); ++i) {
 		if (line->cl_Dow[i] == 0) {
+			// * was NOT used in this field
 			DowUsed = 1;
 			break;
 		}
 	}
+
 	for (i = 0; i < arysize(line->cl_Days); ++i) {
 		if (line->cl_Days[i] == 0) {
 			if (DowUsed) {
-				if (!DomUsed) {
+
+				if (!DomUsed) {  // this test is a first-time through latch
+					             // If we're here, we don't care whether a specific DoM was asked for or not
 					DomUsed = 1;
 					// now, just how are the Dow values being used?
 					// they were either -1 or 0, right?
@@ -878,13 +883,15 @@ FixDayDow(CronLine *line)
 					}
 				}
 				/* continue cycling through cl_Days */
-			}
+			} // if (DowUsed)
 			else {
+				// If the Dow field was *, then we're assuming that Dom wasn't?
 				DomUsed = 1;
 				break;
 			}
-		}
-	}
+		} // if (line->cl_Days[i] == 0)
+	} // for (i = 0; i < arysize(line->cl_Days); ++i)
+
 	if (DowUsed) {
 		memset(line->cl_Days, 0, sizeof(line->cl_Days));
 	}

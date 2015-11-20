@@ -1,8 +1,10 @@
-# MIN HOUR DAY MONTH DAYOFWEEK  COMMAND
+# MIN HOUR DAY    MONTH DAYOFWEEK  COMMAND
 
-  *   *    3,5 nov   wed        /usr/bin/echo "3rd&Last Wednesday"
-  *   *    3,4 nov   wed        /usr/bin/echo "3rd&4th Wednesday"
-  *   *    3   nov   wed        /usr/bin/echo "3rd Wednesday"
-  *   *    1,5 *     mon-wed    date
+  *   *    3,5    nov   thu        echo "3rd&Last Thursday"
+  *   *    3,4    nov   thu        echo "3rd&4th Thursday"
+  *   *    3      nov   thu        echo "3rd Thursday"
+  *   *    1,5    *     tue-thu    echo "1st&last Tue-Thu"
+ 47  17     19    jan,nov thu      echo "5:45pm jan/nov 19th, on Thursday"
+
 
 # vim: set tabstop=8:
