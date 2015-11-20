@@ -9,6 +9,14 @@
 
 #include "defs.h"
 
+#define FIRST_DOW  (1 << 0)
+#define SECOND_DOW (1 << 1)
+#define THIRD_DOW  (1 << 2)
+#define FOURTH_DOW (1 << 3)
+#define FIFTH_DOW  (1 << 4)
+#define LAST_DOW   (1 << 5)
+#define ALL_DOW    (FIRST_DOW|SECOND_DOW|THIRD_DOW|FOURTH_DOW|FIFTH_DOW|LAST_DOW)
+
 Prototype void CheckUpdates(const char *dpath, const char *user_override, time_t t1, time_t t2);
 Prototype void SynchronizeDir(const char *dpath, const char *user_override, int initial_scan);
 Prototype void ReadTimestamps(const char *user);
@@ -21,7 +29,7 @@ Prototype int CheckJobs(void);
 void SynchronizeFile(const char *dpath, const char *fname, const char *uname);
 void DeleteFile(CronFile **pfile);
 char *ParseInterval(int *interval, char *ptr);
-char *ParseField(char *userName, char *ary, int modvalue, int off, int onvalue, const char **names, char *ptr);
+char *ParseField(char *userName, char *ary, int modvalue, int offset, int onvalue, const char **names, char *ptr);
 void FixDayDow(CronLine *line);
 void PrintLine(CronLine *line);
 void PrintFile(CronFile *file, char* loc, char* fname, int line);
@@ -458,15 +466,15 @@ SynchronizeFile(const char *dpath, const char *fileName, const char *userName)
 					 * parse date ranges
 					 */
 
-					ptr = ParseField(file->cf_UserName, line.cl_Mins, 60, 0, 1,
+					ptr = ParseField(file->cf_UserName, line.cl_Mins, FIELD_MINUTES, 0, 1,
 							NULL, ptr);
-					ptr = ParseField(file->cf_UserName, line.cl_Hrs,  24, 0, 1,
+					ptr = ParseField(file->cf_UserName, line.cl_Hrs,  FIELD_HOURS, 0, 1,
 							NULL, ptr);
-					ptr = ParseField(file->cf_UserName, line.cl_Days, 32, 0, 1,
+					ptr = ParseField(file->cf_UserName, line.cl_Days, FIELD_M_DAYS, 0, 1,
 							NULL, ptr);
-					ptr = ParseField(file->cf_UserName, line.cl_Mons, 12, -1, 1,
+					ptr = ParseField(file->cf_UserName, line.cl_Mons, FIELD_MONTHS, -1, 1,
 							MonAry, ptr);
-					ptr = ParseField(file->cf_UserName, line.cl_Dow, 7, 0, 31,
+					ptr = ParseField(file->cf_UserName, line.cl_Dow,  FIELD_W_DAYS, 0, ALL_DOW,
 							DowAry, ptr);
 					/*
 					 * check failure
@@ -701,7 +709,7 @@ ParseInterval(int *interval, char *ptr)
 }
 
 char *
-ParseField(char *user, char *ary, int modvalue, int off, int onvalue, const char **names, char *ptr)
+ParseField(char *user, char *ary, int modvalue, int offset, int onvalue, const char **names, char *ptr)
 {
 	char *base = ptr;
 	int n1 = -1;
@@ -724,9 +732,9 @@ ParseField(char *user, char *ary, int modvalue, int off, int onvalue, const char
 			++ptr;
 		} else if (*ptr >= '0' && *ptr <= '9') {
 			if (n1 < 0)
-				n1 = strtol(ptr, &ptr, 10) + off;
+				n1 = strtol(ptr, &ptr, 10) + offset;
 			else
-				n2 = strtol(ptr, &ptr, 10) + off;
+				n2 = strtol(ptr, &ptr, 10) + offset;
 			skip = 1;
 		} else if (names) {
 			int i;
@@ -815,24 +823,24 @@ ParseField(char *user, char *ary, int modvalue, int off, int onvalue, const char
 		int i;
 
 		switch (modvalue) {
-			case 60:
+			case FIELD_MINUTES:
 				printlogf(LOG_DEBUG, "min:", modvalue);
 				break;
-			case 24:
+			case FIELD_HOURS:
 				printlogf(LOG_DEBUG, " hr:", modvalue);
 				break;
-			case 32:
+			case FIELD_M_DAYS:
 				printlogf(LOG_DEBUG, "day:", modvalue);
 				break;
-			case 12:
+			case FIELD_MONTHS:
 				printlogf(LOG_DEBUG, "mon:", modvalue);
 				break;
-			case  7:
+			case FIELD_W_DAYS:
 				printlogf(LOG_DEBUG, "dow:", modvalue);
 				break;
 		}
 		for (i = 0; i < modvalue; ++i)
-			if (modvalue == 7)
+			if (modvalue == FIELD_W_DAYS)
 				printlogf(LOG_DEBUG, "%2x ", ary[i]);
 			else
 				printlogf(LOG_DEBUG, "%d", ary[i]);
@@ -842,62 +850,63 @@ ParseField(char *user, char *ary, int modvalue, int off, int onvalue, const char
 	return(ptr);
 }
 
+// Reconcile Days of Month with Days of Week.
+// There are four cases to cover:
+// 1) DoM and DoW are both specified as * - the task may run on any day
+// 2) DoM is * and DoW is specific - the task runs weekly on the specified DoW(s)
+// 3) DoM is specific and DoW is * - the task runs on the specified DoM, regardless
+//    of which day of the week they fall
+// 4) DoM is in the range [1..5] and DoW is specific - the task runs on the Nth
+//    specified DoW. DoM > 5 means the last such DoW in that month
 void
 FixDayDow(CronLine *line)
 {
-	unsigned short i,j;
-	short DowUsed = 0;
-	short DomUsed = 0;
+	unsigned short i;
+	short DowStar = 1;
+	short DomStar = 1;
+	char mask = 0;
 
-	// was a particular Dow specified, or was * given?
 	for (i = 0; i < arysize(line->cl_Dow); ++i) {
 		if (line->cl_Dow[i] == 0) {
 			// * was NOT used in this field
-			DowUsed = 1;
+			DowStar = 0;
 			break;
 		}
 	}
 
 	for (i = 0; i < arysize(line->cl_Days); ++i) {
 		if (line->cl_Days[i] == 0) {
-			if (DowUsed) {
-
-				if (!DomUsed) {  // this test is a first-time through latch
-					             // If we're here, we don't care whether a specific DoM was asked for or not
-					DomUsed = 1;
-					// now, just how are the Dow values being used?
-					// they were either -1 or 0, right?
-					// and why mod5? and the bitshift?
-					/* change from "every Mon" to "ith Mon"
-					 * 6th,7th... Dow are treated as 1st,2nd... */
-					for (j = 0; j < arysize(line->cl_Dow); ++j) {
-						// this statement is zeroing stuff out
-						line->cl_Dow[j] &= 1 << (i-1)%5;
-					}
-				} else {
-					// what in the heck does this even mean? what is ith?
-					/* change from "nth Mon" to "nth or ith Mon" */
-					for (j = 0; j < arysize(line->cl_Dow); ++j) {
-						if (line->cl_Dow[j])
-							line->cl_Dow[j] |= 1 << (i-1)%5;
-					}
-				}
-				/* continue cycling through cl_Days */
-			} // if (DowUsed)
-			else {
-				// If the Dow field was *, then we're assuming that Dom wasn't?
-				DomUsed = 1;
-				break;
-			}
-		} // if (line->cl_Days[i] == 0)
-	} // for (i = 0; i < arysize(line->cl_Days); ++i)
-
-	if (DowUsed) {
-		memset(line->cl_Days, 0, sizeof(line->cl_Days));
+			// * was NOT used in this field
+			DomStar = 0;
+			break;
+		}
 	}
-	if (DomUsed && !DowUsed) {
-		memset(line->cl_Dow, 0, sizeof(line->cl_Dow));
+
+	if (DowStar || DomStar) // cases 1, 2 and 3
+		return;
+
+	for (i = 0; i < arysize(line->cl_Days); ++i) {
+		if (line->cl_Days[i]) {
+			if (i < 6)
+				mask |= 1 << (i - 1);
+			else
+				mask |= LAST_DOW;
+		}
 	}
+
+	for (i = 0; i < arysize(line->cl_Dow); ++i) {
+		if (line->cl_Dow[i])
+			line->cl_Dow[i] = mask;
+		else
+			line->cl_Dow[i] = 0;
+	}
+
+	// case 4 relies on the DoW to guard the date;
+	// right now the values in line->cl_Days mean the Nth DoW
+	// we'll set all days of the month to 1 so that we don't fire
+	// off a job on the Nth day of the month when we, for example,
+	// intended that N to refer the 2nd Saturday
+	memset(line->cl_Days, 1, sizeof(line->cl_Days));
 }
 
 /*
@@ -1029,14 +1038,24 @@ TestJobs(time_t t1, time_t t2)
 
 			// tm_mday = The day of the month, in the range 1 to 31.
 			// tm_wday = The number of days since Sunday, in the range 0 to 6.
-			unsigned short n_wday = (tp->tm_mday - 1)%7 + 1;
-			// n_wday -> [1..7]
+			// ((tp->tm_mday - 1) / 7 + 1) -> [0..4]
+			char n_wday = 1 << ((tp->tm_mday - 1) / 7);
 			// [,] = included = closed = <=, >=
 			// (,) = excluded = open   = <, >
 			//
 			// I think this if statement is trying to figure out how many Dow there are in this month...
 			// as in, how many Tuesdays there are in this month. But I think this algo is bonkers...
-			if (n_wday >= 4) {
+			// TODO - the last DoW in a month should set the 5th bit, even if it's also the 4th DoW
+			// but it shouldn't also have the 4th bit set if its really the 5th one
+			// and if the CL specifies the 5th one, we don't want this job to also fire on the 4th DoW for that month...
+			// so the CL should always set the 4th & 5th DoW bits,
+			// and we should be honest here - because if this 4th saturday is also the last one in a month, the CL will
+			// cover it by having set bits 4&5
+			// and if this DoW is the 5th one, then the CL has already covered me
+			// but if this is saturday 4 of 5, then CL will fire today AND next week, too
+			// basically, the problem is that the CL can't capture the notion of a 5 Sunday month
+			// it shoud rather use bit 6 for the "last" DoW since that's unambiguous
+			if (n_wday >= FOURTH_DOW) {
 				struct tm tnext = *tp;
 				tnext.tm_mday += 7;
 				// mktime() converts broken-down time (struct tm) into calendar time (time_t)
@@ -1044,7 +1063,7 @@ TestJobs(time_t t1, time_t t2)
 				// mktime() modifies its argument so as to be "normalized" (Oct 40 becomes Nov 9)
 				// mktime() returns -1 if the broken-down time cannot be expressed as calendar time
 				if (mktime(&tnext) != (time_t)-1 && tnext.tm_mon != tp->tm_mon)
-					n_wday |= 16;	/* last dow in month is always recognized as 5th */
+					n_wday |= LAST_DOW;	/* last dow in month is always recognized as 6th bit */
 			}
 
 			for (file = FileBase; file; file = file->cf_Next) {
@@ -1055,8 +1074,7 @@ TestJobs(time_t t1, time_t t2)
 						/* (re)schedule job? */
 						if (line->cl_Mins[tp->tm_min] &&
 								line->cl_Hrs[tp->tm_hour] &&
-								(line->cl_Days[tp->tm_mday] || (n_wday && line->cl_Dow[tp->tm_wday]) ) &&
-								line->cl_Mons[tp->tm_mon]
+								(line->cl_Days[tp->tm_mday] && n_wday & line->cl_Dow[tp->tm_wday])
 						   ) {
 							if (line->cl_NotUntil)
 								line->cl_NotUntil = t2 - t2 % 60 + line->cl_Delay; /* save what minute this job was scheduled/started waiting, plus cl_Delay */
@@ -1121,17 +1139,17 @@ ArmJob(CronFile *file, CronLine *line, time_t t1, time_t t2)
 						if (t > t1) {
 							struct tm *tp = localtime(&t);
 
-							unsigned short n_wday = (tp->tm_mday - 1)%7 + 1;
-							if (n_wday >= 4) {
+							// TODO why is this duplicated here?
+							char n_wday = 1 << ((tp->tm_mday - 1) / 7);
+							if (n_wday >= FOURTH_DOW) {
 								struct tm tnext = *tp;
 								tnext.tm_mday += 7;
 								if (mktime(&tnext) != (time_t)-1 && tnext.tm_mon != tp->tm_mon)
-									n_wday |= 16;	/* last dow in month is always recognized as 5th */
+									n_wday |= LAST_DOW;	/* last dow in month is always recognized as 5th */
 							}
 							if (line->cl_Mins[tp->tm_min] &&
 									line->cl_Hrs[tp->tm_hour] &&
-									(line->cl_Days[tp->tm_mday] || (n_wday && line->cl_Dow[tp->tm_wday]) ) &&
-									line->cl_Mons[tp->tm_mon]
+									(line->cl_Days[tp->tm_mday] && n_wday & line->cl_Dow[tp->tm_wday])
 							   ) {
 								/* notifier will run soon enough, we wait for it */
 								waiter->cw_Flag = -1;
@@ -1307,7 +1325,7 @@ PrintLine(CronLine *line)
 	if (!line)
 		return;
 
-	printlogf(LOG_DEBUG, "\nCronLine:\n------------\n");
+	printlogf(LOG_DEBUG, "CronLine:\n------------\n");
 	printlogf(LOG_DEBUG, "  Command: %s\n", line->cl_Shell);
 	//printlogf(LOG_DEBUG, "  Desc:    %s\n", line->cl_Description);
 	printlogf(LOG_DEBUG, "  Freq:    %s\n", (line->cl_Freq ?
@@ -1332,7 +1350,7 @@ PrintLine(CronLine *line)
 
 	printlogf(LOG_DEBUG, "\n  Dow:     ");
 	for (i = 0; i < 7; ++i)
-		printlogf(LOG_DEBUG, "%2x ", line->cl_Dow[i]);
+		printlogf(LOG_DEBUG, "%02x ", line->cl_Dow[i]);
 	printlogf(LOG_DEBUG, "\n\n");
 }
 
